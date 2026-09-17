@@ -188,4 +188,20 @@ def require_auth() -> stauth.Authenticate:
         st.info("Ingresa tus credenciales para continuar")
         st.stop()
 
+    # Verificación extra: aunque authentication_status sea True, exige que
+    # el username de la sesión resuelva a un usuario real en la BD antes de
+    # dejar pasar. Sin esto, un session_state inconsistente (ej. tras un
+    # "reconnecting to existing session" de Streamlit Cloud) deja pasar la
+    # página con usuario_id=None, y cualquier intento de guardar datos
+    # explota con un error de base de datos en vez de un mensaje claro.
+    if get_current_user_id() is None:
+        authenticator.cookie_controller.delete_cookie()
+        st.session_state.clear()
+        st.warning(
+            "No se pudo confirmar tu sesión correctamente. Recarga la "
+            "página e inicia sesión de nuevo.",
+            icon=":material/warning:",
+        )
+        st.stop()
+
     return authenticator
