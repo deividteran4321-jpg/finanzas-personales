@@ -1,10 +1,62 @@
+# Tema "Financial Dashboard" (dark) - paleta conservadora y profesional
+# pensada para datos financieros. Ver:
+# .claude/skills/developing-with-streamlit/references/theme.md
+
 [theme]
 base = "dark"
-primaryColor = "#6366f1"
-backgroundColor = "#0b0f17"
-secondaryBackgroundColor = "#151b28"
-textColor = "#e2e8f0"
-font = "sans serif"
+primaryColor = "#60A5FA"             # Azul brillante para modo oscuro
+backgroundColor = "#0F172A"          # Slate profundo
+secondaryBackgroundColor = "#1E293B" # Slate un poco mas claro
+codeBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"                # Texto claro
+linkColor = "#60A5FA"
+borderColor = "#334155"
+codeTextColor = "#CBD5E1"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "6px"                   # Redondeo sutil, profesional
+buttonRadius = "6px"
+
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+codeFontSize = "13px"
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+
+# Colores semanticos para indicadores financieros
+greenColor = "#34D399"  # Positivo/ingresos
+redColor = "#F87171"    # Negativo/egresos
+yellowColor = "#FBBF24" # Avisos
+orangeColor = "#FB923C" # Alertas
+blueColor = "#60A5FA"   # Informativo
+violetColor = "#A78BFA" # Acento
+grayColor = "#94A3B8"   # Neutral/texto secundario
+
+chartCategoricalColors = [
+    "#60A5FA",
+    "#34D399",
+    "#A78BFA",
+    "#F87171",
+    "#FBBF24",
+    "#38BDF8",
+    "#94A3B8",
+    "#FB923C",
+]
+
+dataframeBorderColor = "#334155"
+dataframeHeaderBackgroundColor = "#1E293B"
+
+[theme.sidebar]
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+codeBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"
+borderColor = "#334155"
+primaryColor = "#60A5FA"
 
 [server]
 enableXsrfProtection = true

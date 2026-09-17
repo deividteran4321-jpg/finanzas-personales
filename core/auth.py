@@ -12,6 +12,7 @@ from typing import Optional
 import bcrypt
 import streamlit as st
 import streamlit_authenticator as stauth
+from sqlalchemy.exc import IntegrityError
 
 from core.database import SessionLocal, Usuario
 
@@ -56,7 +57,13 @@ def _seed_admin_if_empty() -> None:
                 nombre="Administrador",
             )
         )
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # Streamlit a veces ejecuta el script dos veces casi en
+            # paralelo al arrancar (primera carga); si otra ejecucion ya
+            # sembro el admin en ese instante, no es un error real.
+            session.rollback()
 
 
 def _load_credentials() -> dict:
@@ -104,6 +111,40 @@ def obtener_hash(username: str) -> Optional[str]:
         return usuario.password_hash if usuario else None
 
 
+def get_current_user_id() -> Optional[int]:
+    """Id del usuario logueado (según st.session_state["username"]).
+
+    Todas las tablas de datos financieros (movimientos, deudas, compras
+    programadas) se filtran por este id - cada usuario ve solo lo suyo.
+    """
+    username = st.session_state.get("username")
+    if not username:
+        return None
+    with SessionLocal() as session:
+        usuario = session.query(Usuario).filter_by(username=username).first()
+        return usuario.id if usuario else None
+
+
+def listar_usuarios() -> list:
+    with SessionLocal() as session:
+        usuarios = session.query(Usuario).order_by(Usuario.username).all()
+        return [{"id": u.id, "username": u.username, "nombre": u.nombre} for u in usuarios]
+
+
+def crear_usuario(username: str, nombre: str, password: str) -> None:
+    with SessionLocal() as session:
+        if session.query(Usuario).filter_by(username=username).first():
+            raise ValueError(f'El usuario "{username}" ya existe.')
+        session.add(
+            Usuario(username=username, nombre=nombre, password_hash=hash_password(password))
+        )
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise ValueError(f'El usuario "{username}" ya existe.') from exc
+
+
 def require_auth() -> stauth.Authenticate:
     """Exige sesión iniciada antes de seguir. Debe llamarse al inicio de
     app.py Y de cada página en pages/, porque Streamlit permite navegar
@@ -114,14 +155,30 @@ def require_auth() -> stauth.Authenticate:
     login y detiene la ejecución de la página actual.
     """
     authenticator = get_authenticator()
-    authenticator.login(
-        fields={
-            "Form name": "Iniciar sesión",
-            "Username": "Usuario",
-            "Password": "Contraseña",
-            "Login": "Ingresar",
-        }
-    )
+    login_fields = {
+        "Form name": "Iniciar sesión",
+        "Username": "Usuario",
+        "Password": "Contraseña",
+        "Login": "Ingresar",
+    }
+    try:
+        authenticator.login(fields=login_fields)
+    except stauth.utilities.exceptions.LoginError:
+        # La cookie del navegador apunta a un usuario que ya no existe (se
+        # borro/renombro la BD, o el usuario cambio su propio username).
+        # Se borra esa cookie invalida en vez de tumbar la app con un
+        # traceback - pero el borrado del lado del navegador para este
+        # componente es asincrono y no siempre se refleja con solo recargar,
+        # así que se pide limpiar cookies del sitio como salida segura.
+        authenticator.cookie_controller.delete_cookie()
+        st.session_state.clear()
+        st.warning(
+            "Tu sesión guardada ya no es válida (la cuenta cambió o ya no "
+            "existe). Borra las cookies de este sitio, o ábrelo en una "
+            "ventana de incógnito, y vuelve a iniciar sesión.",
+            icon=":material/warning:",
+        )
+        st.stop()
 
     auth_status = st.session_state.get("authentication_status")
     if auth_status is False:

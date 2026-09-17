@@ -1,50 +1,78 @@
-"""Módulo de Deudas y Cuentas por Pagar, con estados Pendiente/Vencido/Pagado."""
+"""Módulo de deudas y cuentas por pagar, con estados Pendiente/Vencido/Pagado."""
 from datetime import date
 
 import streamlit as st
 
 from core import queries
-from core.auth import require_auth
+from core.auth import get_current_user_id, require_auth
+from core.background import render_world_map_background
 from core.database import init_db
 
-st.set_page_config(page_title="Deudas", page_icon="🧾", layout="wide")
+st.set_page_config(
+    page_title="Deudas",
+    page_icon=":material/request_quote:",
+    layout="wide",
+)
+render_world_map_background()
 
 init_db()
 authenticator = require_auth()
+usuario_id = get_current_user_id()
 
 with st.sidebar:
-    st.markdown(f"### 👋 {st.session_state.get('name', '')}")
+    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
     authenticator.logout("Cerrar sesión", "sidebar")
 
-st.title("🧾 Deudas y Cuentas por Pagar")
+st.title("Deudas y cuentas por pagar", icon=":material/request_quote:")
 
 tab_resumen, tab_nueva_deuda, tab_nuevo_pago = st.tabs(
-    ["Resumen de pagos", "Nueva deuda", "Agregar pago/cuota"]
+    [
+        ":material/summarize: Resumen de pagos",
+        ":material/add_card: Nueva deuda",
+        ":material/event_repeat: Agregar pago/cuota",
+    ]
 )
 
 # ---------------------------------------------------------------------------
 # Resumen de pagos
 # ---------------------------------------------------------------------------
 with tab_resumen:
-    filtro_estado = st.radio(
-        "Filtrar por estado",
-        options=["Todos", "Pendiente", "Vencido", "Pagado"],
-        horizontal=True,
-    )
-    df_pagos = queries.listar_pagos(
-        estado=None if filtro_estado == "Todos" else filtro_estado
-    )
+    df_todos = queries.listar_pagos(usuario_id)
 
-    if df_pagos.empty:
-        st.info("No hay pagos registrados para este filtro.")
+    if df_todos.empty:
+        st.caption("No hay pagos registrados todavía.")
     else:
-        color_estado = {"Pendiente": "🟡", "Vencido": "🔴", "Pagado": "🟢"}
+        conteos = df_todos["estado"].value_counts()
+        with st.container(horizontal=True):
+            st.badge(
+                f"{conteos.get('Vencido', 0)} vencidos",
+                icon=":material/error:",
+                color="red",
+            )
+            st.badge(
+                f"{conteos.get('Pendiente', 0)} pendientes",
+                icon=":material/schedule:",
+                color="orange",
+            )
+            st.badge(
+                f"{conteos.get('Pagado', 0)} pagados",
+                icon=":material/check_circle:",
+                color="green",
+            )
+
+        filtro_estado = st.segmented_control(
+            "Filtrar por estado",
+            options=["Todos", "Pendiente", "Vencido", "Pagado"],
+            default="Todos",
+            label_visibility="collapsed",
+        )
+        df_pagos = df_todos if filtro_estado in (None, "Todos") else df_todos[
+            df_todos["estado"] == filtro_estado
+        ]
+
         df_mostrar = df_pagos.copy()
         df_mostrar["fecha_pago"] = df_mostrar["fecha_pago"].apply(
             lambda f: f if f else "—"
-        )
-        df_mostrar["estado"] = df_mostrar["estado"].map(
-            lambda e: f"{color_estado.get(e, '')} {e}"
         )
         st.dataframe(
             df_mostrar.rename(
@@ -56,29 +84,30 @@ with tab_resumen:
                     "estado": "Estado",
                 }
             ).drop(columns=["id"]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         pendientes = df_pagos[df_pagos["estado"] != "Pagado"]
         if not pendientes.empty:
-            st.subheader("Marcar un pago como pagado")
+            st.subheader("Marcar un pago como pagado", icon=":material/task_alt:")
             opciones = {
                 f"#{row.id} · {row.deuda} · ${row.monto:,.2f} · vence {row.fecha_vencimiento}": row.id
                 for row in pendientes.itertuples()
             }
             seleccion = st.selectbox("Selecciona el pago", options=list(opciones.keys()))
             fecha_pago = st.date_input("Fecha de pago", value=date.today())
-            if st.button("Marcar como pagado", type="primary"):
-                queries.marcar_pagado(opciones[seleccion], fecha_pago)
-                st.success("Pago registrado.")
+            if st.button(
+                "Marcar como pagado", icon=":material/task_alt:", type="primary"
+            ):
+                queries.marcar_pagado(usuario_id, opciones[seleccion], fecha_pago)
+                st.toast("Pago registrado.", icon=":material/check_circle:")
                 st.rerun()
 
-    st.divider()
-    st.subheader("Deudas registradas")
-    df_deudas = queries.listar_deudas()
+    st.subheader("Deudas registradas", icon=":material/credit_card:")
+    df_deudas = queries.listar_deudas(usuario_id)
     if df_deudas.empty:
-        st.info("Aún no has registrado ninguna deuda.")
+        st.caption("Aún no has registrado ninguna deuda.")
     else:
         st.dataframe(
             df_deudas.rename(
@@ -89,7 +118,7 @@ with tab_resumen:
                     "notas": "Notas",
                 }
             ).drop(columns=["id"]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -101,22 +130,24 @@ with tab_nueva_deuda:
         nombre = st.text_input("Nombre de la deuda (ej. Tarjeta Banesco, Préstamo Juan)")
         monto_total = st.number_input("Monto total", min_value=0.0, step=1.0, format="%.2f")
         notas = st.text_area("Notas (opcional)")
-        enviado = st.form_submit_button("Crear deuda", use_container_width=True)
+        enviado = st.form_submit_button(
+            "Crear deuda", icon=":material/add_card:", width="stretch"
+        )
         if enviado:
             if not nombre or monto_total <= 0:
                 st.error("Ingresa un nombre y un monto total mayor a 0.")
             else:
-                queries.agregar_deuda(nombre, monto_total, notas)
-                st.success(f'Deuda "{nombre}" creada.')
+                queries.agregar_deuda(usuario_id, nombre, monto_total, notas)
+                st.toast(f'Deuda "{nombre}" creada.', icon=":material/check_circle:")
                 st.rerun()
 
 # ---------------------------------------------------------------------------
 # Nuevo pago/cuota
 # ---------------------------------------------------------------------------
 with tab_nuevo_pago:
-    df_deudas = queries.listar_deudas()
+    df_deudas = queries.listar_deudas(usuario_id)
     if df_deudas.empty:
-        st.info("Primero crea una deuda en la pestaña 'Nueva deuda'.")
+        st.caption("Primero crea una deuda en la pestaña «Nueva deuda».")
     else:
         with st.form("nuevo_pago", clear_on_submit=True):
             opciones_deuda = {
@@ -124,16 +155,20 @@ with tab_nuevo_pago:
                 for row in df_deudas.itertuples()
             }
             deuda_sel = st.selectbox("Deuda", options=list(opciones_deuda.keys()))
-            monto = st.number_input("Monto de la cuota/pago", min_value=0.0, step=1.0, format="%.2f")
+            monto = st.number_input(
+                "Monto de la cuota/pago", min_value=0.0, step=1.0, format="%.2f"
+            )
             fecha_vencimiento = st.date_input("Fecha de vencimiento", value=date.today())
             notas = st.text_input("Notas (opcional)")
-            enviado = st.form_submit_button("Agregar pago", use_container_width=True)
+            enviado = st.form_submit_button(
+                "Agregar pago", icon=":material/event_repeat:", width="stretch"
+            )
             if enviado:
                 if monto <= 0:
                     st.error("El monto debe ser mayor a 0.")
                 else:
                     queries.agregar_pago(
-                        opciones_deuda[deuda_sel], monto, fecha_vencimiento, notas
+                        usuario_id, opciones_deuda[deuda_sel], monto, fecha_vencimiento, notas
                     )
-                    st.success("Pago/cuota agregado.")
+                    st.toast("Pago/cuota agregado.", icon=":material/check_circle:")
                     st.rerun()

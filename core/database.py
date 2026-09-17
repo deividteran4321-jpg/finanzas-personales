@@ -25,7 +25,8 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
@@ -56,6 +57,7 @@ class Categoria(Base):
 class Movimiento(Base):
     __tablename__ = "movimientos"
     id = Column(Integer, primary_key=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
     fecha = Column(Date, nullable=False)
     tipo = Column(String(10), nullable=False)  # 'ingreso' | 'egreso'
     categoria_id = Column(Integer, ForeignKey("categorias.id"))
@@ -73,6 +75,7 @@ class Movimiento(Base):
 class Deuda(Base):
     __tablename__ = "deudas"
     id = Column(Integer, primary_key=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
     nombre = Column(String(120), nullable=False)
     monto_total = Column(Numeric(14, 2), nullable=False)
     saldo_pendiente = Column(Numeric(14, 2), nullable=False)
@@ -90,6 +93,36 @@ class Pago(Base):
     notas = Column(String(255), default="")
 
     deuda = relationship("Deuda")
+
+
+class CompraProgramada(Base):
+    __tablename__ = "compras_programadas"
+    id = Column(Integer, primary_key=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    nombre = Column(String(120), nullable=False)
+    moneda = Column(String(3), nullable=False)  # 'VES' | 'USD'
+    monto_total = Column(Numeric(14, 2), nullable=False)
+    saldo_pendiente = Column(Numeric(14, 2), nullable=False)
+    notas = Column(String(255), default="")
+    creado_en = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        CheckConstraint("moneda IN ('VES', 'USD')", name="ck_compra_moneda"),
+    )
+
+
+class CuotaProgramada(Base):
+    __tablename__ = "cuotas_programadas"
+    id = Column(Integer, primary_key=True)
+    compra_id = Column(
+        Integer, ForeignKey("compras_programadas.id", ondelete="CASCADE"), nullable=False
+    )
+    monto = Column(Numeric(14, 2), nullable=False)
+    fecha_pago = Column(Date, nullable=False)  # fecha planeada de pago
+    fecha_pago_real = Column(Date, nullable=True)  # NULL = aun no pagada
+    notas = Column(String(255), default="")
+
+    compra = relationship("CompraProgramada")
 
 
 DEFAULT_CATEGORIAS = [
@@ -117,7 +150,16 @@ def _build_engine():
     url = _get_database_url()
     if url.startswith("sqlite"):
         os.makedirs("data", exist_ok=True)
-        return create_engine(url, connect_args={"check_same_thread": False})
+        eng = create_engine(url, connect_args={"check_same_thread": False})
+        # SQLite ignora las foreign keys (y por ende ON DELETE CASCADE) salvo
+        # que se active este pragma por conexion. Postgres/Supabase no lo
+        # necesita, las respeta siempre.
+        event.listen(
+            eng,
+            "connect",
+            lambda dbapi_con, _: dbapi_con.execute("PRAGMA foreign_keys=ON"),
+        )
+        return eng
     return create_engine(url, pool_pre_ping=True)
 
 
@@ -142,4 +184,10 @@ def init_db() -> None:
             session.add_all(
                 [Categoria(nombre=n, tipo=t) for n, t in DEFAULT_CATEGORIAS]
             )
-        session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Streamlit puede ejecutar el script dos veces casi en
+                # paralelo al arrancar; si otra ejecucion ya sembro las
+                # categorias en ese instante, no es un error real.
+                session.rollback()

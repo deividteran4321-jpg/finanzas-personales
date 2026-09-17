@@ -19,12 +19,15 @@ core/
   auth.py                Login, hashing bcrypt, cambio de credenciales
   queries.py             Agregaciones y CRUD (todo lo que consulta la BD)
 pages/
-  1_Movimientos.py       Registrar ingresos/egresos
-  2_Deudas.py             Deudas, cuotas/pagos y sus estados
-  3_Admin.py              Cambiar tu usuario/contraseña
+  1_Movimientos.py         Registrar ingresos/egresos
+  2_Deudas.py              Deudas, cuotas/pagos y sus estados
+  3_Admin.py               Mi cuenta + crear/eliminar usuarios
+  4_Compras_Programadas.py Planificar compras futuras (VES/USD) en cuotas
 .streamlit/
-  config.toml             Tema oscuro
+  config.toml             Tema "Financial Dashboard" (nativo de Streamlit)
   secrets.toml.example    Plantilla de credenciales (copiar a secrets.toml)
+static/
+  world-map.svg           Mapa de fondo (ver licencia en "Notas de diseño")
 ```
 
 ## Cómo correrlo en local
@@ -74,6 +77,7 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
 
    CREATE TABLE movimientos (
        id            SERIAL PRIMARY KEY,
+       usuario_id    INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
        fecha         DATE NOT NULL,
        tipo          VARCHAR(10) NOT NULL CHECK (tipo IN ('ingreso', 'egreso')),
        categoria_id  INTEGER REFERENCES categorias(id),
@@ -84,6 +88,7 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
 
    CREATE TABLE deudas (
        id               SERIAL PRIMARY KEY,
+       usuario_id       INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
        nombre           VARCHAR(120) NOT NULL,
        monto_total      NUMERIC(14, 2) NOT NULL,
        saldo_pendiente  NUMERIC(14, 2) NOT NULL,
@@ -98,6 +103,26 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
        fecha_vencimiento  DATE NOT NULL,
        fecha_pago         DATE,
        notas              VARCHAR(255) DEFAULT ''
+   );
+
+   CREATE TABLE compras_programadas (
+       id               SERIAL PRIMARY KEY,
+       usuario_id       INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+       nombre           VARCHAR(120) NOT NULL,
+       moneda           VARCHAR(3) NOT NULL CHECK (moneda IN ('VES', 'USD')),
+       monto_total      NUMERIC(14, 2) NOT NULL,
+       saldo_pendiente  NUMERIC(14, 2) NOT NULL,
+       notas            VARCHAR(255) DEFAULT '',
+       creado_en        TIMESTAMP DEFAULT NOW()
+   );
+
+   CREATE TABLE cuotas_programadas (
+       id               SERIAL PRIMARY KEY,
+       compra_id        INTEGER NOT NULL REFERENCES compras_programadas(id) ON DELETE CASCADE,
+       monto            NUMERIC(14, 2) NOT NULL,
+       fecha_pago       DATE NOT NULL,
+       fecha_pago_real  DATE,
+       notas            VARCHAR(255) DEFAULT ''
    );
    ```
 
@@ -132,3 +157,22 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
   abres la app en el mismo navegador.
 - Los filtros de Año/Mes/Categoría del dashboard actualizan los gráficos al
   instante (Streamlit re-ejecuta el script al cambiar cualquier selector).
+- **Compras programadas** (VES o USD): igual que Deudas/Pagos, pero para
+  compras futuras que aún no haces. El total programado se muestra por
+  separado en cada moneda (USD y VES) - **nunca se suman entre sí**, porque
+  son monedas distintas y esta app no hace conversión de tasas (eso vive en
+  la otra app de finanzas del proyecto, con las tasas BCV/Binance).
+- **Multiusuario con datos privados**: cualquier usuario puede crear otros
+  usuarios desde Admin → Usuarios (no hay un rol "admin" especial, todos
+  tienen el mismo acceso). Cada usuario ve solo sus propios movimientos,
+  deudas y compras programadas - las categorías son la única tabla
+  compartida entre todos. **No existe forma de eliminar un usuario desde la
+  app** (a propósito, para que nadie borre por accidente los datos de otra
+  cuenta); si hace falta, se hace a mano en la base de datos - al borrar la
+  fila en `usuarios`, sus movimientos/deudas/compras se van detrás en
+  cascada (`ON DELETE CASCADE`).
+- **Fondo de mapa mundial**: puramente decorativo, vía `background-image`
+  en `core/background.py` (no cambia el `background-color` del tema). El
+  SVG (`static/world-map.svg`) es "Simple World Map" de Al MacDonald,
+  editado por Fritz Lekschas, licencia CC BY-SA 3.0
+  ([repo](https://github.com/flekschas/simple-world-map)).
