@@ -116,13 +116,22 @@ def get_current_user_id() -> Optional[int]:
 
     Todas las tablas de datos financieros (movimientos, deudas, compras
     programadas) se filtran por este id - cada usuario ve solo lo suyo.
+
+    Justo después de un login exitoso, Streamlit Cloud a veces re-ejecuta
+    el script con "username" momentáneamente vacío en session_state (antes
+    de que la cookie termine de sincronizarse). Para no tratar ese instante
+    como "no autenticado", se cachea el id ya confirmado una vez y se
+    reutiliza si "username" no está disponible en una corrida puntual.
     """
     username = st.session_state.get("username")
     if not username:
-        return None
+        return st.session_state.get("_usuario_id_cache")
     with SessionLocal() as session:
         usuario = session.query(Usuario).filter_by(username=username).first()
-        return usuario.id if usuario else None
+        if usuario is None:
+            return None
+        st.session_state["_usuario_id_cache"] = usuario.id
+        return usuario.id
 
 
 def listar_usuarios() -> list:
@@ -182,9 +191,13 @@ def require_auth() -> stauth.Authenticate:
 
     auth_status = st.session_state.get("authentication_status")
     if auth_status is False:
+        # Limpia el cache de usuario_id: si quedó de una sesión anterior
+        # (ej. justo después de cerrar sesión), no debe filtrarse aquí.
+        st.session_state.pop("_usuario_id_cache", None)
         st.error("Usuario o contraseña incorrectos")
         st.stop()
     elif auth_status is None:
+        st.session_state.pop("_usuario_id_cache", None)
         st.info("Ingresa tus credenciales para continuar")
         st.stop()
 
