@@ -171,6 +171,15 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
   cuenta); si hace falta, se hace a mano en la base de datos - al borrar la
   fila en `usuarios`, sus movimientos/deudas/compras se van detrás en
   cascada (`ON DELETE CASCADE`).
+- **Usuarios siempre en minúsculas**: `streamlit-authenticator` normaliza a
+  minúsculas el username que se escribe en el login antes de guardarlo en
+  `session_state` (es case-insensitive por diseño de la librería). Por eso
+  `crear_usuario()`, `cambiar_credenciales()` y toda búsqueda por username en
+  `core/auth.py` fuerzan `.lower()` de forma consistente - si no, un usuario
+  guardado con mayúsculas (ej. "Deivid") nunca hace match con lo que la
+  librería busca ("deivid") y el login queda roto para esa cuenta. Si migras
+  datos existentes con usernames en mayúsculas, corre una vez en el SQL
+  Editor de Supabase: `UPDATE usuarios SET username = LOWER(username);`
 - **Fondo de mapa mundial**: puramente decorativo, vía `background-image`
   en `core/background.py` (no cambia el `background-color` del tema). El
   SVG (`static/world-map.svg`) es "Simple World Map" de Al MacDonald,

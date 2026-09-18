@@ -49,7 +49,10 @@ with tab_cuenta:
         st.write(f"Usuario actual: **{username_actual}**")
         password_actual = st.text_input("Contraseña actual", type="password")
         nuevo_username = st.text_input(
-            "Nuevo usuario (déjalo igual si no quieres cambiarlo)", value=username_actual
+            "Nuevo usuario (déjalo igual si no quieres cambiarlo)",
+            value=username_actual,
+            help="Se guarda en minúsculas sin importar cómo lo escribas "
+            "(el login no distingue mayúsculas/minúsculas).",
         )
         nuevo_password = st.text_input("Nueva contraseña", type="password")
         confirmar_password = st.text_input("Confirmar nueva contraseña", type="password")
@@ -95,7 +98,11 @@ with tab_usuarios:
 
     with st.expander("Crear nuevo usuario", icon=":material/person_add:"):
         with st.form("nuevo_usuario", clear_on_submit=True):
-            nuevo_user_username = st.text_input("Usuario (para iniciar sesión)")
+            nuevo_user_username = st.text_input(
+                "Usuario (para iniciar sesión)",
+                help="Se guarda en minúsculas sin importar cómo lo escribas "
+                "(el login no distingue mayúsculas/minúsculas).",
+            )
             nuevo_user_nombre = st.text_input("Nombre a mostrar")
             nuevo_user_password = st.text_input("Contraseña", type="password")
             nuevo_user_confirmar = st.text_input("Confirmar contraseña", type="password")

@@ -41,7 +41,7 @@ def _seed_admin_if_empty() -> None:
     with SessionLocal() as session:
         if session.query(Usuario).count() > 0:
             return
-        username = _get_secret("ADMIN_USERNAME", "admin")
+        username = _get_secret("ADMIN_USERNAME", "admin").strip().lower()
         password = _get_secret("ADMIN_PASSWORD")
         if not password:
             st.error(
@@ -96,6 +96,8 @@ def cambiar_credenciales(
 ) -> None:
     """Actualiza usuario/contraseña en la BD. Llamar solo tras verificar la
     contraseña actual con verify_password()."""
+    username_actual = username_actual.strip().lower()
+    nuevo_username = nuevo_username.strip().lower()
     with SessionLocal() as session:
         usuario = session.query(Usuario).filter_by(username=username_actual).first()
         if usuario is None:
@@ -106,6 +108,7 @@ def cambiar_credenciales(
 
 
 def obtener_hash(username: str) -> Optional[str]:
+    username = username.strip().lower()
     with SessionLocal() as session:
         usuario = session.query(Usuario).filter_by(username=username).first()
         return usuario.password_hash if usuario else None
@@ -122,10 +125,16 @@ def get_current_user_id() -> Optional[int]:
     de que la cookie termine de sincronizarse). Para no tratar ese instante
     como "no autenticado", se cachea el id ya confirmado una vez y se
     reutiliza si "username" no está disponible en una corrida puntual.
+
+    streamlit-authenticator normaliza a minúsculas el username internamente
+    (lo hace al validar el login), así que "username" en session_state
+    siempre queda en minúsculas tras un login exitoso - por eso todo se
+    guarda/busca en minúsculas también aquí.
     """
     username = st.session_state.get("username")
     if not username:
         return st.session_state.get("_usuario_id_cache")
+    username = username.strip().lower()
     with SessionLocal() as session:
         usuario = session.query(Usuario).filter_by(username=username).first()
         if usuario is None:
@@ -141,6 +150,7 @@ def listar_usuarios() -> list:
 
 
 def crear_usuario(username: str, nombre: str, password: str) -> None:
+    username = username.strip().lower()
     with SessionLocal() as session:
         if session.query(Usuario).filter_by(username=username).first():
             raise ValueError(f'El usuario "{username}" ya existe.')
