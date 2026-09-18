@@ -13,22 +13,32 @@ datos.
 ## Estructura
 
 ```
-app.py                  Dashboard principal (requiere login)
+app.py                  Router: login + navegación (st.navigation/st.Page)
 core/
   database.py           Modelos SQLAlchemy + conexión (Postgres o SQLite local)
   auth.py                Login, hashing bcrypt, cambio de credenciales
   queries.py             Agregaciones y CRUD (todo lo que consulta la BD)
+  tasas.py               Tasas del día BCV/paralelo (dolarapi.com)
+  calendario.py          Calendario HTML de cuotas programadas por pagar
 pages/
-  1_Movimientos.py         Registrar ingresos/egresos
-  2_Deudas.py              Deudas, cuotas/pagos y sus estados
-  3_Admin.py               Mi cuenta + crear/eliminar usuarios
-  4_Compras_Programadas.py Planificar compras futuras (VES/USD) en cuotas
+  0_Dashboard.py            Panel principal (KPIs, tasas, compras, alertas)
+  1_Movimientos.py          Registrar ingresos/egresos
+  2_Deudas.py               Deudas, cuotas/pagos y sus estados
+  3_Admin.py                Mi cuenta + crear usuarios
+  4_Compras_Programadas.py  Planificar compras futuras (VES/USD) en cuotas
 .streamlit/
   config.toml             Tema "Financial Dashboard" (nativo de Streamlit)
   secrets.toml.example    Plantilla de credenciales (copiar a secrets.toml)
 static/
   world-map.svg           Mapa de fondo (ver licencia en "Notas de diseño")
 ```
+
+`app.py` es el único archivo que Streamlit ejecuta directamente (el "main
+file" en Streamlit Cloud sigue siendo `app.py` - no hace falta cambiar esa
+configuración). Ahí se resuelven login, fondo y barra lateral una sola vez
+por sesión, y luego `st.navigation()` arma el menú apuntando a los archivos
+en `pages/`, con el título/ícono de cada uno declarado ahí mismo (por eso
+esos archivos ya no llaman a `st.set_page_config()` por su cuenta).
 
 ## Cómo correrlo en local
 
@@ -180,6 +190,21 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
   librería busca ("deivid") y el login queda roto para esa cuenta. Si migras
   datos existentes con usernames en mayúsculas, corre una vez en el SQL
   Editor de Supabase: `UPDATE usuarios SET username = LOWER(username);`
+- **Tasas del día (BCV/paralelo)**: el Dashboard consulta
+  [dolarapi.com](https://dolarapi.com) (gratis, sin API key) para mostrar la
+  tasa oficial BCV y la tasa de mercado paralelo (a la que en Venezuela se
+  suele llamar indistintamente "paralelo" o "Binance", porque el P2P de
+  Binance es su principal insumo). Se cachea 1 hora (`st.cache_data`) y si
+  la API falla se muestra "No disponible" en vez de romper el Dashboard -
+  son datos puramente informativos, ningún cálculo de la app depende de
+  ellos.
+- **Alertas y calendario de cuotas programadas**: el Dashboard lista las
+  cuotas de Compras programadas vencidas o por vencer en los próximos 7
+  días, y pinta un calendario del mes (`core/calendario.py`, HTML simple -
+  Streamlit no trae un widget de calendario nativo) marcando en qué día hay
+  que pagar qué. Vive en el Dashboard porque es donde el usuario ya ve el
+  resto de sus alertas financieras; para crear/editar cuotas se sigue
+  usando la página Compras programadas.
 - **Fondo de mapa mundial**: puramente decorativo, vía `background-image`
   en `core/background.py` (no cambia el `background-color` del tema). El
   SVG (`static/world-map.svg`) es "Simple World Map" de Al MacDonald,

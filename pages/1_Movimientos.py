@@ -4,24 +4,9 @@ from datetime import date
 import streamlit as st
 
 from core import queries
-from core.auth import get_current_user_id, require_auth
-from core.background import render_world_map_background
-from core.database import init_db
+from core.auth import get_current_user_id
 
-st.set_page_config(
-    page_title="Movimientos",
-    page_icon=":material/receipt_long:",
-    layout="wide",
-)
-render_world_map_background()
-
-init_db()
-authenticator = require_auth()
 usuario_id = get_current_user_id()
-
-with st.sidebar:
-    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
-    authenticator.logout("Cerrar sesión", "sidebar")
 
 st.title("Ingresos y egresos", icon=":material/receipt_long:")
 
