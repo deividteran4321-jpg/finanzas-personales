@@ -434,6 +434,73 @@ def listar_cuotas_programadas(usuario_id: int, estado: Optional[str] = None) -> 
         return df
 
 
+def eliminar_compra_programada(usuario_id: int, compra_id: int) -> None:
+    """Elimina una compra programada y, en cascada (ON DELETE CASCADE en la
+    BD), todas sus cuotas - para corregir una compra agregada por error."""
+    with SessionLocal() as session:
+        compra = session.get(CompraProgramada, compra_id)
+        if compra and compra.usuario_id == usuario_id:
+            session.delete(compra)
+            session.commit()
+
+
+def eliminar_cuota_programada(usuario_id: int, cuota_id: int) -> None:
+    """Elimina una cuota puntual (por error al agregarla). Si la cuota ya
+    estaba marcada como pagada, su monto se le devuelve al saldo_pendiente
+    de la compra para no dejarlo desincronizado."""
+    with SessionLocal() as session:
+        cuota = session.get(CuotaProgramada, cuota_id)
+        if not cuota:
+            return
+        compra = session.get(CompraProgramada, cuota.compra_id)
+        if not compra or compra.usuario_id != usuario_id:
+            return
+        if cuota.fecha_pago_real is not None:
+            compra.saldo_pendiente = float(compra.saldo_pendiente) + float(cuota.monto)
+        session.delete(cuota)
+        session.commit()
+
+
+def marcar_compra_comprada(usuario_id: int, compra_id: int) -> Optional[dict]:
+    """Cierra una compra programada de una vez: pone su saldo_pendiente en 0
+    y marca todas sus cuotas pendientes como pagadas hoy (para que no sigan
+    apareciendo en alertas). Si es en USD, además registra automáticamente
+    un egreso en Movimientos por el saldo restante, para que el Saldo
+    actual del Dashboard lo refleje - las compras en VES no generan ese
+    movimiento porque el Dashboard maneja el saldo en USD (moneda distinta,
+    esta app no hace conversión de tasas).
+
+    Devuelve {"monto": float, "moneda": str, "genero_movimiento": bool} o
+    None si la compra no existe / no es del usuario.
+    """
+    with SessionLocal() as session:
+        compra = session.get(CompraProgramada, compra_id)
+        if not compra or compra.usuario_id != usuario_id:
+            return None
+        monto_restante = float(compra.saldo_pendiente)
+        moneda = compra.moneda
+        nombre = compra.nombre
+        compra.saldo_pendiente = 0
+        hoy = date.today()
+        session.query(CuotaProgramada).filter(
+            CuotaProgramada.compra_id == compra_id,
+            CuotaProgramada.fecha_pago_real.is_(None),
+        ).update({CuotaProgramada.fecha_pago_real: hoy})
+        session.commit()
+
+    genero_movimiento = moneda == "USD" and monto_restante > 0
+    if genero_movimiento:
+        agregar_movimiento(
+            usuario_id,
+            date.today(),
+            "egreso",
+            "Otros gastos",
+            f"Compra programada: {nombre}",
+            monto_restante,
+        )
+    return {"monto": monto_restante, "moneda": moneda, "genero_movimiento": genero_movimiento}
+
+
 def total_programado_por_moneda(usuario_id: int) -> dict:
     """Suma de saldo_pendiente de compras programadas, agrupada por moneda.
 

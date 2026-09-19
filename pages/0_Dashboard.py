@@ -1,10 +1,9 @@
 """Dashboard principal: KPIs, tasas del día, gráficos, compras programadas
 y alertas/calendario de cuotas por pagar.
 
-El login, el fondo decorativo y la barra lateral (usuario + cerrar sesión)
-ya se resuelven una sola vez en app.py (el router de navegación) antes de
-llegar aquí - esta página solo necesita el usuario_id para filtrar sus
-propios datos.
+Cada página se protege a sí misma con require_auth() (en vez de confiar
+solo en el router app.py) para que la sesión quede exigida sin importar
+por qué ruta interna Streamlit sirva esta página - ver la nota en app.py.
 """
 from datetime import date, timedelta
 
@@ -12,11 +11,23 @@ import plotly.express as px
 import streamlit as st
 
 from core import queries
-from core.auth import get_current_user_id
+from core.auth import get_current_user_id, require_auth
+from core.background import render_world_map_background
 from core.calendario import render_calendario_cuotas
+from core.database import init_db
 from core.tasas import tasa_bcv, tasa_paralelo
 
+render_world_map_background()
+init_db()
+authenticator = require_auth()
 usuario_id = get_current_user_id()
+
+with st.sidebar:
+    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
+    authenticator.logout("Cerrar sesión", "sidebar")
+    st.caption(
+        "La sesión se recuerda automáticamente en este navegador durante 30 días."
+    )
 
 st.title("Panel financiero", icon=":material/dashboard:")
 

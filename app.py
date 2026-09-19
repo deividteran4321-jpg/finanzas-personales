@@ -1,33 +1,21 @@
-"""Punto de entrada: exige login y define la navegación entre páginas.
+"""Punto de entrada: define la navegación entre páginas y sus títulos.
 
-El título/ícono de cada página (mostrados en la barra lateral y en la
-pestaña del navegador) se declaran una sola vez aquí, vía st.Page - por
-eso las páginas en pages/ ya no llaman a st.set_page_config() por su
-cuenta. Login, fondo decorativo y la barra lateral de usuario también se
-resuelven aquí una sola vez para toda la sesión.
+IMPORTANTE: aquí no debe haber nada que pueda detener el script (como un
+require_auth() con st.stop()) antes de llegar a st.navigation(). Si
+Streamlit nunca llega a ejecutar st.navigation() en un run, cae de vuelta
+al descubrimiento automático "legado" de pages/ - y ese modo permite entrar
+directo a la URL de cualquier página (ej. /Movimientos o /Admin) sin pasar
+por el login para nada. Por eso el login, la base de datos y el fondo se
+resuelven en cada página (pages/*.py) y no aquí: así quedan protegidos sin
+importar por qué ruta interna Streamlit termine sirviendo esa página.
 """
 import streamlit as st
-
-from core.auth import require_auth
-from core.background import render_world_map_background
-from core.database import init_db
 
 st.set_page_config(
     page_title="Finanzas personales",
     page_icon=":material/account_balance_wallet:",
     layout="wide",
 )
-render_world_map_background()
-
-init_db()
-authenticator = require_auth()
-
-with st.sidebar:
-    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
-    authenticator.logout("Cerrar sesión", "sidebar")
-    st.caption(
-        "La sesión se recuerda automáticamente en este navegador durante 30 días."
-    )
 
 pg = st.navigation(
     [

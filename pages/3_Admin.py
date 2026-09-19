@@ -13,8 +13,19 @@ from core.auth import (
     crear_usuario,
     listar_usuarios,
     obtener_hash,
+    require_auth,
     verify_password,
 )
+from core.background import render_world_map_background
+from core.database import init_db
+
+render_world_map_background()
+init_db()
+authenticator = require_auth()
+
+with st.sidebar:
+    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
+    authenticator.logout("Cerrar sesión", "sidebar")
 
 st.title("Administración", icon=":material/admin_panel_settings:")
 

@@ -5,9 +5,18 @@ from datetime import date
 import streamlit as st
 
 from core import queries
-from core.auth import get_current_user_id
+from core.auth import get_current_user_id, require_auth
+from core.background import render_world_map_background
+from core.database import init_db
 
+render_world_map_background()
+init_db()
+authenticator = require_auth()
 usuario_id = get_current_user_id()
+
+with st.sidebar:
+    st.markdown(f"**:material/person: {st.session_state.get('name', '')}**")
+    authenticator.logout("Cerrar sesión", "sidebar")
 
 st.title("Compras programadas", icon=":material/shopping_cart:")
 st.caption(
@@ -112,6 +121,29 @@ with tab_resumen:
                 st.toast("Cuota registrada como pagada.", icon=":material/check_circle:")
                 st.rerun()
 
+        with st.expander("Eliminar una cuota", icon=":material/delete:"):
+            st.caption(
+                "Para corregir una cuota agregada por error. Si ya estaba "
+                "marcada como pagada, su monto se devuelve al saldo "
+                "pendiente de la compra."
+            )
+            opciones_borrar = {
+                f"#{row.id} · {row.compra} · {SIMBOLO.get(row.moneda, '')} {row.monto:,.2f} · "
+                f"{row.fecha_pago} · {row.estado}": row.id
+                for row in df_todas.itertuples()
+            }
+            seleccion_borrar = st.selectbox(
+                "Selecciona la cuota a eliminar",
+                options=list(opciones_borrar.keys()),
+                key="borrar_cuota_sel",
+            )
+            if st.button(
+                "Eliminar cuota", icon=":material/delete:", type="secondary", key="borrar_cuota_btn"
+            ):
+                queries.eliminar_cuota_programada(usuario_id, opciones_borrar[seleccion_borrar])
+                st.toast("Cuota eliminada.", icon=":material/check_circle:")
+                st.rerun()
+
     st.subheader("Compras programadas registradas", icon=":material/list_alt:")
     df_compras = queries.listar_compras_programadas(usuario_id)
     if df_compras.empty:
@@ -137,6 +169,68 @@ with tab_resumen:
             width="stretch",
             hide_index=True,
         )
+
+        compras_pendientes = df_compras[df_compras["saldo_pendiente"] > 0]
+        if not compras_pendientes.empty:
+            with st.expander("Marcar una compra como comprada", icon=":material/task_alt:"):
+                st.caption(
+                    "Cierra la compra de una vez (por si te equivocaste al ir "
+                    "agregando cuotas, o ya la pagaste completa). Si es en "
+                    "USD, se registra automáticamente un egreso en "
+                    "Movimientos por el saldo restante, para que se rebaje "
+                    "del Saldo actual del Dashboard. Las compras en VES no "
+                    "generan ese movimiento porque el Dashboard maneja el "
+                    "saldo en USD (son monedas distintas)."
+                )
+                opciones_comprada = {
+                    f"{row.nombre} · {SIMBOLO.get(row.moneda, '')} {row.saldo_pendiente:,.2f} "
+                    f"{row.moneda} restante": row.id
+                    for row in compras_pendientes.itertuples()
+                }
+                seleccion_comprada = st.selectbox(
+                    "Selecciona la compra", options=list(opciones_comprada.keys())
+                )
+                if st.button(
+                    "Marcar como comprada", icon=":material/task_alt:", type="primary"
+                ):
+                    resultado = queries.marcar_compra_comprada(
+                        usuario_id, opciones_comprada[seleccion_comprada]
+                    )
+                    if resultado and resultado["genero_movimiento"]:
+                        st.toast(
+                            f"Compra cerrada. Se registró un egreso de "
+                            f"${resultado['monto']:,.2f} en Movimientos.",
+                            icon=":material/check_circle:",
+                        )
+                    else:
+                        st.toast("Compra marcada como comprada.", icon=":material/check_circle:")
+                    st.rerun()
+
+        with st.expander("Eliminar una compra programada", icon=":material/delete:"):
+            st.caption(
+                "Para corregir una compra agregada por error. Se borran "
+                "también todas sus cuotas - esta acción no se puede deshacer."
+            )
+            opciones_borrar_compra = {
+                f"{row.nombre} · {SIMBOLO.get(row.moneda, '')} {row.monto_total:,.2f} {row.moneda}": row.id
+                for row in df_compras.itertuples()
+            }
+            seleccion_borrar_compra = st.selectbox(
+                "Selecciona la compra a eliminar",
+                options=list(opciones_borrar_compra.keys()),
+                key="borrar_compra_sel",
+            )
+            if st.button(
+                "Eliminar compra",
+                icon=":material/delete:",
+                type="secondary",
+                key="borrar_compra_btn",
+            ):
+                queries.eliminar_compra_programada(
+                    usuario_id, opciones_borrar_compra[seleccion_borrar_compra]
+                )
+                st.toast("Compra programada eliminada.", icon=":material/check_circle:")
+                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Nueva compra programada

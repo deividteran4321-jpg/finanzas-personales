@@ -35,10 +35,18 @@ static/
 
 `app.py` es el único archivo que Streamlit ejecuta directamente (el "main
 file" en Streamlit Cloud sigue siendo `app.py` - no hace falta cambiar esa
-configuración). Ahí se resuelven login, fondo y barra lateral una sola vez
-por sesión, y luego `st.navigation()` arma el menú apuntando a los archivos
-en `pages/`, con el título/ícono de cada uno declarado ahí mismo (por eso
-esos archivos ya no llaman a `st.set_page_config()` por su cuenta).
+configuración). Ahí solo vive `st.navigation()`, que arma el menú apuntando
+a los archivos en `pages/` con el título/ícono de cada uno declarado ahí
+mismo (por eso esos archivos ya no llaman a `st.set_page_config()` por su
+cuenta). Login, base de datos y fondo decorativo se resuelven en **cada
+página**, no en `app.py` - a propósito: `st.navigation()` debe ejecutarse
+siempre sin nada que pueda detenerlo antes (como un login que haga
+`st.stop()`), porque si Streamlit nunca llega a correr `st.navigation()` en
+algún run, cae de vuelta al descubrimiento automático "legado" de `pages/`,
+que permite entrar directo a la URL de cualquier página (ej. `/Admin`) sin
+pasar por el login. Por eso cada página se protege a sí misma con
+`require_auth()`, sin importar por qué ruta interna Streamlit termine
+sirviéndola.
 
 ## Cómo correrlo en local
 
@@ -172,6 +180,19 @@ de secrets ya no se vuelven a usar una vez que existe al menos un usuario.
   separado en cada moneda (USD y VES) - **nunca se suman entre sí**, porque
   son monedas distintas y esta app no hace conversión de tasas (eso vive en
   la otra app de finanzas del proyecto, con las tasas BCV/Binance).
+  - Se puede **eliminar** una compra programada completa (borra también
+    sus cuotas, `ON DELETE CASCADE`) o una cuota individual, por si te
+    equivocas al cargar algo - si la cuota eliminada ya estaba pagada, su
+    monto se devuelve al saldo pendiente de la compra para no desincronizar
+    el total.
+  - Se puede **marcar una compra completa como comprada**
+    (`marcar_compra_comprada` en `core/queries.py`): pone su saldo
+    pendiente en 0 y cierra todas sus cuotas sueltas. Si la compra es en
+    **USD**, además registra automáticamente un egreso en Movimientos por
+    el saldo restante, para que se rebaje del Saldo actual del Dashboard.
+    Las compras en **VES** no generan ese movimiento a propósito: el
+    Dashboard lleva su saldo en USD y esta app no convierte entre monedas,
+    así que sumarlas ahí sería incorrecto.
 - **Multiusuario con datos privados**: cualquier usuario puede crear otros
   usuarios desde Admin → Usuarios (no hay un rol "admin" especial, todos
   tienen el mismo acceso). Cada usuario ve solo sus propios movimientos,
